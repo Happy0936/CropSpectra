@@ -1,0 +1,8 @@
+flask
+gunicorn
+tensorflow==2.12.0
+keras
+numpy
+pillow
+opencv-python
+scikit-learn
