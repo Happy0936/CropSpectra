@@ -1,9 +1,10 @@
 flask
 gunicorn
-tensorflow-cpu==2.10.0
+tensorflow==2.20.0
 keras
 numpy
 pillow
 opencv-python-headless
 scikit-learn
+
 
