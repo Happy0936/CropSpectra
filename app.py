@@ -53,14 +53,14 @@ with open("classes.json") as f:
     class_names = json.load(f)
 with open("disease_info.json") as f:
     disease_info = json.load(f)
-with open("train_features.pkl", "rb") as f:
-    train_features = pickle.load(f)
-with open("train_labels.pkl", "rb") as f:
-    train_labels = pickle.load(f)
+#with open("train_features.pkl", "rb") as f:
+#    train_features = pickle.load(f)
+#with open("train_labels.pkl", "rb") as f:
+#    train_labels = pickle.load(f)
 
 
-feature_model = MobileNetV2(weights="imagenet", include_top=False, pooling="avg")
-
+# feature_model = MobileNetV2(weights="imagenet", include_top=False, pooling="avg")
+feature_model = None
 
 # ---------------- HOME PAGE ----------------
 @app.route("/")
@@ -176,54 +176,49 @@ def predict_page():
         flash("Please login first!", "error")
         return redirect(url_for("login"))
 
-
     if request.method == "POST":
         if 'file' not in request.files:
             flash("No file uploaded!", "error")
             return redirect(url_for("predict_page"))
-
 
         file = request.files["file"]
         if file.filename == "":
             flash("No file selected!", "error")
             return redirect(url_for("predict_page"))
 
-
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
         file.save(filepath)
 
+        try:
+            # ---- IMAGE LOAD ----
+            img = image.load_img(filepath, target_size=(224, 224))
+            img_array = image.img_to_array(img)
+            img_array_exp = np.expand_dims(img_array, axis=0) / 255.0
 
-        # ---- Predict disease ----
-        img = image.load_img(filepath, target_size=(224, 224))
-        img_array = image.img_to_array(img)
-        img_array_exp = np.expand_dims(img_array, axis=0) / 255.0
-        pred = model.predict(img_array_exp)
-        result_index = np.argmax(pred, axis=1)[0]
-        predicted_class = class_names[result_index]
+            # ---- MODEL PREDICTION ----
+            pred = model.predict(img_array_exp)
+            confidence = np.max(pred)   # ✅ confidence score
+            result_index = np.argmax(pred, axis=1)[0]
 
+            # ---- CONFIDENCE CHECK ----
+            if confidence < 0.6:
+                predicted_class = "Not a valid crop image"
+                description = "The uploaded image does not match any trained crop classes."
+                symptoms = []
+                treatment = "N/A"
+                prevention = "N/A"
+            else:
+                predicted_class = class_names[result_index]
+                info = disease_info.get(predicted_class, {})
+                description = info.get("description", "No description available.")
+                symptoms = info.get("symptoms", [])
+                treatment = info.get("treatment", "No treatment details available.")
+                prevention = info.get("prevention", "No prevention details available.")
 
-        # ---- Similarity check ----
-        img_feat = image.img_to_array(img)
-        img_feat = np.expand_dims(img_feat, axis=0)
-        img_feat = preprocess_input(img_feat)
-        img_embedding = feature_model.predict(img_feat)
-        similarities = cosine_similarity(img_embedding, train_features)
-        max_similarity = np.max(similarities)
-
-
-        if max_similarity < 0.6:
-            predicted_class = "Not a valid crop image"
-            description = "The uploaded image does not match any trained crop classes."
-            symptoms = []
-            treatment = "N/A"
-            prevention = "N/A"
-        else:
-            info = disease_info.get(predicted_class, {})
-            description = info.get("description", "No description available.")
-            symptoms = info.get("symptoms", [])
-            treatment = info.get("treatment", "No treatment details available.")
-            prevention = info.get("prevention", "No prevention details available.")
-
+        except Exception as e:
+            print("Prediction error:", e)
+            flash("Image processing failed. Try another image.", "error")
+            return redirect(url_for("predict_page"))
 
         return render_template(
             "predict.html",
@@ -234,7 +229,6 @@ def predict_page():
             prevention=prevention,
             img_path=filepath
         )
-
 
     return render_template("predict.html")
 
@@ -285,6 +279,7 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
